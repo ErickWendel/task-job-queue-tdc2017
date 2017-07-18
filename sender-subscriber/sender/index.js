@@ -39,7 +39,7 @@ const user = index => obj = {
 
 }
 let count = 0
-every(5, 'millisecond', () => {
+every(500, 'milliseconds', () => {
 
     const items = Array
         .from({ length: 5 })

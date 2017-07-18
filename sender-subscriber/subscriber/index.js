@@ -43,13 +43,11 @@ const updateItemsTask = ids => {
 
     const process = queue
         .process((job, done) => {
-            // log('job.data', job.data[0].status)
             return productsProcess
-                .update({ name:  job.data   }, { $set: { status: 'processed' } }, {$multi: true},
+                .update({ name: job.data }, { $set: { status: 'processed' } }, { $multi: true },
                 (error, res) => {
                     if (error) return done(error, null)
-                   
-                    // const result = Object.assign({}, res, { jobId: job.id })
+
                     return done(null, res)
                 })
         })
@@ -75,7 +73,7 @@ const mapItemsTask = (items) => {
 
     const process = queue.process(10, (job, done) => {
 
-        if (!job.data.length) return done(null, 'items not is array', null)
+        if (!job.data.length) return done('items not is array', null)
         const users = job.data.map(data => {
             const products = data.products.map(item => item.price)
             const total = products.length
@@ -96,20 +94,21 @@ const mapItemsTask = (items) => {
 
 const runJob = (job) => {
 
-    // job.task.on('success', function (jobId) {
-    //     log(`success: [${job.taskName}]: ${jobId} - finished!`)
-    // })
 
-    job.queue.on('error', function (err) {
-        error(`error: [${job.taskName}]  verifyItemsjob.queue: ${err}`)
+    job.queue.on('error', function (jobId, err) {
+        error(`error: [${jobId.queue.name}]  verifyItemsjob.queue: ${err}`)
+    })
+    job.queue.on('failed', function (jobId, err) {
+        error(`failed - status: [${jobId.status}] failed:[${jobId.data.index}]  error: ${err}`)
     })
     job.queue.on('job retrying', function (jobId, err) {
         error(`retried: [${job.taskName}] retrying: ${jobId} - failed but is being retried!`)
     })
 
-    job.queue.on('success', function (jobId) {
-        log(`success: [${job.taskName}]: ${jobId} - finished!`)
+    job.queue.on('succeeded', function (job, result) {
+        log(`Job ${job.queue.name}.${job.id} succeeded, result: ${Object.keys(result)}`)
     })
+
     job.queue.on('failed', function (jobId, err) {
         error(`failed: [${job.taskName}] error: ${err}`)
     });
@@ -129,35 +128,30 @@ const verifyItems = (items) =>
     new Promise((resolve, reject) => {
         productsProcess
             .find({ 'status': 'created' },
-           {_id: 0},
+            { _id: 0 },
             { skip: 0, limit: 1000 },
-             (err, success) =>
+            (err, success) =>
                 err ? reject(err) : resolve(success))
     })
 
 
 const runTasks = async (items) => {
     try {
-        log('mapping items...')
-        const mapped = await mapItems(items)
 
-        log('saving items...')
+        const mapped = await mapItems(items)
         const saved = await saveItems(mapped.data)
         const names = items.map(i => i.name)
+        const updates = await names.map(name => updateItems(name))
 
-        log('updating old items...')
-        const  updates = await names.map(name => updateItems(name))
-        
-        log('updated', JSON.stringify(Promise.all(updates)))
         return updates
     }
     catch (e) {
-        error(e) 
+        error(e)
     }
 }
 
 async function runCron() {
-    every(5, 'milliseconds', async function () {
+    every(1, 'second', async function () {
         log('verifing items....')
         const items = await verifyItems()
         log(`processing ${items.length} items....`)
@@ -168,7 +162,6 @@ async function runCron() {
         }
         log('running tasks items....')
         const tasks = await runTasks(items)
-        log(`${items.length} tasks resolved with success at: ${new Date().toISOString()}`)
 
 
     })
